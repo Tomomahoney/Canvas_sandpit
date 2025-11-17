@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red Blood Cell Measurement Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            width: 100%;
+            padding: 25px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 25px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 15px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .image-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .image-section h2 {
+            color: #333;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            background: #f5f5f5;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        #rbcCanvas {
+            display: block;
+            background: white;
+        }
+
+        .measurement-info {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin-top: 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .measurement-info strong {
+            color: #667eea;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ee5a52;
+        }
+
+        .stats-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stats-section h2 {
+            color: #333;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .stat-card.alt {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stat-card.alt2 {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .stat-card.alt3 {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .stat-unit {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .measurements-list {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .measurement-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 13px;
+            border-left: 3px solid #667eea;
+        }
+
+        .measurement-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .measurement-item button {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .measurement-item button:hover {
+            background: #ee5a52;
+        }
+
+        .no-measurements {
+            color: #999;
+            font-size: 13px;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 15px;
+            background: #fafafa;
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid #eee;
+        }
+
+        .instructions {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #856404;
+            margin-bottom: 15px;
+        }
+
+        .instructions strong {
+            color: #333;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .container {
+                box-shadow: none;
+            }
+        }
+
+        /* Scrollbar styling */
+        .measurements-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .measurements-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .measurements-list::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 3px;
+        }
+
+        .measurements-list::-webkit-scrollbar-thumb:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 Red Blood Cell Measurement Tool</h1>
+            <p>Measure cell diameters, analyze distributions, and understand measurement error</p>
+        </div>
+
+        <div class="instructions">
+            <strong>How to use:</strong> Click and drag across a cell to measure its diameter. Make multiple measurements to see the distribution curve update in real-time. Watch the statistics change as you gather more data.
+        </div>
+
+        <div class="main-layout">
+            <!-- Image Section -->
+            <div class="image-section">
+                <h2>Microscope Image</h2>
+                <div class="canvas-container">
+                    <canvas id="rbcCanvas" width="500" height="500"></canvas>
+                </div>
+                <div class="measurement-info">
+                    <strong>Scale:</strong> 1 pixel = 0.02 micrometers<br>
+                    <strong>Status:</strong> <span id="measurementStatus">Ready to measure. Click and drag across a cell.</span>
+                </div>
+                <div class="controls">
+                    <button class="btn-primary" onclick="startNewImage()">New Image</button>
+                    <button class="btn-secondary" onclick="toggleMeasureMode()">Measure</button>
+                    <button class="btn-danger" onclick="clearAllMeasurements()">Clear All</button>
+                </div>
+            </div>
+
+            <!-- Stats & Chart Section -->
+            <div class="stats-section">
+                <h2>Analysis & Statistics</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Mean Diameter</div>
+                        <div class="stat-value" id="meanValue">--</div>
+                        <div class="stat-unit">μm</div>
+                    </div>
+                    <div class="stat-card alt">
+                        <div class="stat-label">Std Deviation</div>
+                        <div class="stat-value" id="stdValue">--</div>
+                        <div class="stat-unit">μm</div>
+                    </div>
+                    <div class="stat-card alt2">
+                        <div class="stat-label">Coefficient of Variation</div>
+                        <div class="stat-value" id="cvValue">--</div>
+                        <div class="stat-unit">%</div>
+                    </div>
+                    <div class="stat-card alt3">
+                        <div class="stat-label">Count</div>
+                        <div class="stat-value" id="countValue">0</div>
+                        <div class="stat-unit">measurements</div>
+                    </div>
+                </div>
+
+                <h3 style="color: #333; margin: 15px 0 10px 0; font-size: 14px;">Distribution Curve</h3>
+                <div class="chart-container">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+
+                <h3 style="color: #333; margin: 15px 0 10px 0; font-size: 14px;">Your Measurements</h3>
+                <div class="measurements-list" id="measurementsList">
+                    <div class="no-measurements">No measurements yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== RBC IMAGE GENERATOR =====
+        class RBCImageGenerator {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.cellImages = [];
+                this.currentImageIndex = 0;
+                this.generateAllImages();
+            }
+
+            generateAllImages() {
+                this.cellImages = [
+                    this.createImage1(),
+                    this.createImage2(),
+                    this.createImage3(),
+                    this.createImage4(),
+                    this.createImage5()
+                ];
+            }
+
+            drawCell(ctx, x, y, diameter, rotation = 0, opacity = 1) {
+                ctx.save();
+                ctx.globalAlpha = opacity;
+                ctx.translate(x, y);
+                ctx.rotate(rotation);
+
+                // Cell body (biconcave disc)
+                ctx.fillStyle = `rgba(220, 20, 60, 0.85)`;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, diameter / 2, diameter / 2.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Membrane highlight
+                ctx.strokeStyle = `rgba(255, 100, 100, 0.6)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.ellipse(0, -diameter / 6, diameter / 2 - 2, diameter / 3, 0, 0, Math.PI);
+                ctx.stroke();
+
+                // Central concavity shadow
+                ctx.fillStyle = `rgba(180, 10, 40, 0.6)`;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, diameter / 3.5, diameter / 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            addNoiseAndTexture(ctx) {
+                const imageData = ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                const data = imageData.data;
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const noise = (Math.random() - 0.5) * 20;
+                    data[i] += noise;     // R
+                    data[i + 1] += noise; // G
+                    data[i + 2] += noise; // B
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+            }
+
+            createImage1() {
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = 500;
+                offCanvas.height = 500;
+                const ctx = offCanvas.getContext('2d');
+
+                // Background
+                ctx.fillStyle = '#f5e6e0';
+                ctx.fillRect(0, 0, 500, 500);
+
+                // Grid pattern (subtle microscope background)
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 500; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, 500);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(500, i);
+                    ctx.stroke();
+                }
+
+                // Generate 8 cells with realistic sizes (6-8 μm, scaled)
+                this.drawCell(ctx, 80, 100, 35, 0.3, 1);
+                this.drawCell(ctx, 200, 80, 38, 1.2, 0.95);
+                this.drawCell(ctx, 350, 120, 36, 0.8, 0.9);
+                this.drawCell(ctx, 120, 250, 37, 1.8, 1);
+                this.drawCell(ctx, 300, 280, 35, 0.5, 0.85);
+                this.drawCell(ctx, 420, 250, 39, 1.1, 0.92);
+                this.drawCell(ctx, 150, 400, 36, 0.2, 0.88);
+                this.drawCell(ctx, 380, 380, 37, 1.5, 0.95);
+
+                this.addNoiseAndTexture(ctx);
+                return offCanvas;
+            }
+
+            createImage2() {
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = 500;
+                offCanvas.height = 500;
+                const ctx = offCanvas.getContext('2d');
+
+                ctx.fillStyle = '#ede6e1';
+                ctx.fillRect(0, 0, 500, 500);
+
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 500; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, 500);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(500, i);
+                    ctx.stroke();
+                }
+
+                this.drawCell(ctx, 100, 150, 36, 0.7, 1);
+                this.drawCell(ctx, 250, 100, 37, 1.4, 0.92);
+                this.drawCell(ctx, 400, 180, 35, 0.3, 0.88);
+                this.drawCell(ctx, 80, 320, 38, 1.6, 0.95);
+                this.drawCell(ctx, 260, 350, 36, 0.9, 1);
+                this.drawCell(ctx, 450, 300, 37, 1.2, 0.90);
+                this.drawCell(ctx, 180, 450, 35, 0.1, 0.93);
+                this.drawCell(ctx, 350, 420, 38, 1.9, 0.87);
+
+                this.addNoiseAndTexture(ctx);
+                return offCanvas;
+            }
+
+            createImage3() {
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = 500;
+                offCanvas.height = 500;
+                const ctx = offCanvas.getContext('2d');
+
+                ctx.fillStyle = '#f0e9e3';
+                ctx.fillRect(0, 0, 500, 500);
+
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 500; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, 500);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(500, i);
+                    ctx.stroke();
+                }
+
+                this.drawCell(ctx, 70, 90, 37, 0.5, 0.94);
+                this.drawCell(ctx, 220, 130, 36, 1.3, 1);
+                this.drawCell(ctx, 370, 70, 38, 0.2, 0.89);
+                this.drawCell(ctx, 150, 280, 35, 1.7, 0.96);
+                this.drawCell(ctx, 310, 240, 37, 0.6, 0.91);
+                this.drawCell(ctx, 440, 320, 36, 1.4, 0.93);
+                this.drawCell(ctx, 90, 420, 38, 0.8, 0.98);
+                this.drawCell(ctx, 320, 380, 36, 1.1, 0.87);
+
+                this.addNoiseAndTexture(ctx);
+                return offCanvas;
+            }
+
+            createImage4() {
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = 500;
+                offCanvas.height = 500;
+                const ctx = offCanvas.getContext('2d');
+
+                ctx.fillStyle = '#e8dfd8';
+                ctx.fillRect(0, 0, 500, 500);
+
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 500; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, 500);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(500, i);
+                    ctx.stroke();
+                }
+
+                this.drawCell(ctx, 110, 120, 36, 1.0, 0.92);
+                this.drawCell(ctx, 270, 160, 37, 0.4, 1);
+                this.drawCell(ctx, 390, 100, 35, 1.5, 0.90);
+                this.drawCell(ctx, 140, 310, 38, 0.7, 0.95);
+                this.drawCell(ctx, 330, 300, 36, 1.8, 0.88);
+                this.drawCell(ctx, 460, 250, 37, 0.3, 0.94);
+                this.drawCell(ctx, 200, 430, 35, 1.2, 0.91);
+                this.drawCell(ctx, 360, 450, 37, 0.9, 0.96);
+
+                this.addNoiseAndTexture(ctx);
+                return offCanvas;
+            }
+
+            createImage5() {
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = 500;
+                offCanvas.height = 500;
+                const ctx = offCanvas.getContext('2d');
+
+                ctx.fillStyle = '#e6ddd5';
+                ctx.fillRect(0, 0, 500, 500);
+
+                ctx.strokeStyle = 'rgba(200, 200, 200, 0.1)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 500; i += 50) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, 500);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(500, i);
+                    ctx.stroke();
+                }
+
+                this.drawCell(ctx, 95, 140, 37, 0.6, 0.93);
+                this.drawCell(ctx, 240, 110, 36, 1.1, 0.97);
+                this.drawCell(ctx, 380, 150, 38, 0.5, 0.90);
+                this.drawCell(ctx, 130, 290, 36, 1.4, 1);
+                this.drawCell(ctx, 290, 320, 37, 0.8, 0.92);
+                this.drawCell(ctx, 430, 280, 35, 1.6, 0.89);
+                this.drawCell(ctx, 170, 410, 37, 0.3, 0.95);
+                this.drawCell(ctx, 340, 400, 36, 1.0, 0.94);
+
+                this.addNoiseAndTexture(ctx);
+                return offCanvas;
+            }
+
+            drawRandomImage() {
+                this.currentImageIndex = Math.floor(Math.random() * this.cellImages.length);
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.drawImage(this.cellImages[this.currentImageIndex], 0, 0);
+            }
+        }
+
+        // ===== MEASUREMENT TOOL =====
+        class MeasurementTool {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.measurements = [];
+                this.isDrawing = false;
+                this.startX = 0;
+                this.startY = 0;
+                this.measureMode = true;
+                this.pixelToMicron = 0.02; // 1 pixel = 0.02 micrometers
+
+                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                this.canvas.addEventListener('touchstart', (e) => this.onTouchStart(e));
+                this.canvas.addEventListener('touchmove', (e) => this.onTouchMove(e));
+                this.canvas.addEventListener('touchend', (e) => this.onTouchEnd(e));
+            }
+
+            onMouseDown(e) {
+                if (!this.measureMode) return;
+                const rect = this.canvas.getBoundingClientRect();
+                this.startX = e.clientX - rect.left;
+                this.startY = e.clientY - rect.top;
+                this.isDrawing = true;
+            }
+
+            onMouseMove(e) {
+                if (!this.isDrawing) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+
+                // Redraw image with measurement line
+                imageGenerator.drawRandomImage(); // Redraw current image
+                this.drawMeasurementLine(this.startX, this.startY, currentX, currentY);
+            }
+
+            onMouseUp(e) {
+                if (!this.isDrawing) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const endX = e.clientX - rect.left;
+                const endY = e.clientY - rect.top;
+
+                const distance = this.calculateDistance(this.startX, this.startY, endX, endY);
+                if (distance > 5) { // Ignore very small measurements
+                    const micrometers = distance * this.pixelToMicron;
+                    this.measurements.push(micrometers);
+                    updateDisplay();
+                }
+
+                this.isDrawing = false;
+                imageGenerator.drawRandomImage(); // Restore image
+            }
+
+            onTouchStart(e) {
+                if (!this.measureMode) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                this.startX = touch.clientX - rect.left;
+                this.startY = touch.clientY - rect.top;
+                this.isDrawing = true;
+                e.preventDefault();
+            }
+
+            onTouchMove(e) {
+                if (!this.isDrawing) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                const currentX = touch.clientX - rect.left;
+                const currentY = touch.clientY - rect.top;
+
+                imageGenerator.drawRandomImage();
+                this.drawMeasurementLine(this.startX, this.startY, currentX, currentY);
+                e.preventDefault();
+            }
+
+            onTouchEnd(e) {
+                if (!this.isDrawing) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const touch = e.changedTouches[0];
+                const endX = touch.clientX - rect.left;
+                const endY = touch.clientY - rect.top;
+
+                const distance = this.calculateDistance(this.startX, this.startY, endX, endY);
+                if (distance > 5) {
+                    const micrometers = distance * this.pixelToMicron;
+                    this.measurements.push(micrometers);
+                    updateDisplay();
+                }
+
+                this.isDrawing = false;
+                imageGenerator.drawRandomImage();
+                e.preventDefault();
+            }
+
+            calculateDistance(x1, y1, x2, y2) {
+                return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+            }
+
+            drawMeasurementLine(x1, y1, x2, y2) {
+                const distance = this.calculateDistance(x1, y1, x2, y2);
+                const micrometers = (distance * this.pixelToMicron).toFixed(2);
+
+                // Draw line
+                this.ctx.strokeStyle = '#00ff00';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(x1, y1);
+                this.ctx.lineTo(x2, y2);
+                this.ctx.stroke();
+
+                // Draw endpoints
+                this.ctx.fillStyle = '#00ff00';
+                this.ctx.beginPath();
+                this.ctx.arc(x1, y1, 5, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.arc(x2, y2, 5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Draw text
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
+                this.ctx.fillStyle = '#00ff00';
+                this.ctx.font = 'bold 14px Arial';
+                this.ctx.fillText(`${micrometers} μm`, midX + 10, midY - 10);
+
+                document.getElementById('measurementStatus').textContent = `Current measurement: ${micrometers} μm`;
+            }
+
+            clearAll() {
+                this.measurements = [];
+                updateDisplay();
+            }
+
+            removeMeasurement(index) {
+                this.measurements.splice(index, 1);
+                updateDisplay();
+            }
+
+            toggleMode() {
+                this.measureMode = !this.measureMode;
+                if (this.measureMode) {
+                    this.canvas.style.cursor = 'crosshair';
+                } else {
+                    this.canvas.style.cursor = 'default';
+                }
+            }
+        }
+
+        // ===== STATISTICS =====
+        class Statistics {
+            static calculate(measurements) {
+                if (measurements.length === 0) {
+                    return null;
+                }
+
+                const mean = measurements.reduce((a, b) => a + b) / measurements.length;
+                const variance = measurements.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / measurements.length;
+                const stdDev = Math.sqrt(variance);
+                const cv = (stdDev / mean) * 100;
+
+                // Expected RBC diameter is ~7.5 micrometers
+                const expectedValue = 7.5;
+                const percentError = Math.abs((mean - expectedValue) / expectedValue) * 100;
+
+                return {
+                    count: measurements.length,
+                    mean: mean.toFixed(3),
+                    stdDev: stdDev.toFixed(3),
+                    cv: cv.toFixed(1),
+                    min: Math.min(...measurements).toFixed(3),
+                    max: Math.max(...measurements).toFixed(3),
+                    percentError: percentError.toFixed(1)
+                };
+            }
+        }
+
+        // ===== CHART =====
+        let distributionChart = null;
+
+        function updateChart(measurements) {
+            const bins = 15;
+            const minValue = Math.min(...measurements);
+            const maxValue = Math.max(...measurements);
+            const binWidth = (maxValue - minValue) / bins || 1;
+
+            const histogram = Array(bins).fill(0);
+            const labels = [];
+
+            for (let i = 0; i < bins; i++) {
+                const binStart = minValue + i * binWidth;
+                labels.push(binStart.toFixed(2));
+            }
+
+            measurements.forEach(measurement => {
+                const binIndex = Math.floor((measurement - minValue) / binWidth);
+                if (binIndex < bins && binIndex >= 0) {
+                    histogram[binIndex]++;
+                }
+            });
+
+            const ctx = document.getElementById('distributionChart').getContext('2d');
+
+            if (distributionChart) {
+                distributionChart.destroy();
+            }
+
+            distributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Frequency',
+                        data: histogram,
+                        backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        title: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Frequency'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Diameter (μm)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ===== UI UPDATE =====
+        function updateDisplay() {
+            const measurements = measurementTool.measurements;
+
+            // Update stats
+            if (measurements.length > 0) {
+                const stats = Statistics.calculate(measurements);
+                document.getElementById('meanValue').textContent = stats.mean;
+                document.getElementById('stdValue').textContent = stats.stdDev;
+                document.getElementById('cvValue').textContent = stats.cv;
+                document.getElementById('countValue').textContent = stats.count;
+
+                updateChart(measurements);
+                updateMeasurementsList(measurements);
+            } else {
+                document.getElementById('meanValue').textContent = '--';
+                document.getElementById('stdValue').textContent = '--';
+                document.getElementById('cvValue').textContent = '--';
+                document.getElementById('countValue').textContent = '0';
+                document.getElementById('measurementStatus').textContent = 'Ready to measure. Click and drag across a cell.';
+
+                if (distributionChart) {
+                    distributionChart.destroy();
+                    distributionChart = null;
+                }
+                document.getElementById('measurementsList').innerHTML = '<div class="no-measurements">No measurements yet</div>';
+            }
+        }
+
+        function updateMeasurementsList(measurements) {
+            const list = document.getElementById('measurementsList');
+            list.innerHTML = '';
+
+            measurements.forEach((measurement, index) => {
+                const item = document.createElement('div');
+                item.className = 'measurement-item';
+                item.innerHTML = `
+                    <span>#${index + 1}: ${measurement.toFixed(3)} μm</span>
+                    <button onclick="removeMeasurement(${index})">Remove</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // ===== GLOBAL FUNCTIONS =====
+        function clearAllMeasurements() {
+            if (confirm('Clear all measurements? This cannot be undone.')) {
+                measurementTool.clearAll();
+            }
+        }
+
+        function removeMeasurement(index) {
+            measurementTool.removeMeasurement(index);
+        }
+
+        function startNewImage() {
+            imageGenerator.drawRandomImage();
+            document.getElementById('measurementStatus').textContent = 'Ready to measure. Click and drag across a cell.';
+        }
+
+        function toggleMeasureMode() {
+            measurementTool.toggleMode();
+            const btn = event.target;
+            btn.textContent = measurementTool.measureMode ? 'Stop Measuring' : 'Measure';
+            btn.className = measurementTool.measureMode ? 'btn-primary' : 'btn-secondary';
+        }
+
+        // ===== INITIALIZATION =====
+        let imageGenerator;
+        let measurementTool;
+
+        window.addEventListener('load', () => {
+            imageGenerator = new RBCImageGenerator('rbcCanvas');
+            measurementTool = new MeasurementTool('rbcCanvas');
+            imageGenerator.drawRandomImage();
+            updateDisplay();
+        });
+    </script>
+</body>
+</html>

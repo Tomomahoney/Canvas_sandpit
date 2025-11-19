@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HemoMeasure: Advanced Hematology Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f1f5f9;
+            --panel: #ffffff;
+            --text: #0f172a;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--panel);
+            padding: 10px 20px;
+            border-bottom: 1px solid #cbd5e1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        h1 { margin: 0; font-size: 1.2rem; color: var(--primary); display:flex; align-items:center; gap:10px;}
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* --- Viewer (Left) --- */
+        .viewer-section {
+            flex: 2;
+            position: relative;
+            background: #1e293b; /* Dark slate for contrast */
+            overflow: hidden;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        
+        /* --- Controls Overlay --- */
+        .controls-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.96);
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 240px;
+            max-height: 85vh;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* --- Sidebar (Right) --- */
+        .data-section {
+            flex: 1;
+            background: var(--panel);
+            border-left: 1px solid #cbd5e1;
+            padding: 20px;
+            overflow-y: auto;
+            min-width: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* --- UI Elements --- */
+        button {
+            padding: 8px 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        button:hover { background-color: #1d4ed8; transform: translateY(-1px); }
+        button.secondary { background: #e2e8f0; color: #334155; }
+        button.secondary:hover { background: #cbd5e1; }
+        button.active { background: #16a34a; box-shadow: inset 0 0 0 2px #bbf7d0; }
+        
+        /* Export buttons specific style */
+        .btn-export {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            background-color: #475569;
+        }
+
+        select, input {
+            padding: 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .mode-toggle { display: flex; gap: 5px; }
+        .mode-toggle button { flex: 1; }
+
+        /* --- Tables --- */
+        .table-wrapper {
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; color: #64748b; font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .viewer-section { height: 55vh; }
+            .data-section { height: 45vh; }
+            .controls-overlay { width: 180px; font-size: 0.85rem; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>HemoMeasure <span style="font-size:0.7em; font-weight:normal; color:#64748b;">| Simulated Pathology</span></h1>
+</header>
+
+<div class="container">
+    <div class="viewer-section" id="viewerContainer">
+        <canvas id="imgCanvas"></canvas>
+        
+        <div class="controls-overlay">
+            <label><strong>Slide Selection</strong></label>
+            <select id="imageSelect"></select>
+            
+            <div class="mode-toggle">
+                <button id="btnModeMeasure" class="active" onclick="setMode('measure')">📏 Measure</button>
+                <button id="btnModePan" class="secondary" onclick="setMode('pan')">✋ Pan</button>
+            </div>
+
+            <div>
+                <label><strong>Calibration</strong></label>
+                <div style="display:flex; gap:5px; align-items:center;">
+                    <input type="number" id="calibrationInput" value="0.10" step="0.01" style="width:70px">
+                    <span style="font-size:0.8rem">&mu;m/px</span>
+                </div>
+                <small style="font-size:0.7em; color:#666;">Draw on scale bar (bottom right) to verify.</small>
+            </div>
+            
+            <hr style="width:100%; border:0; border-top:1px solid #cbd5e1; margin: 5px 0;">
+            
+            <button class="secondary" onclick="resetView()">Fit to Screen</button>
+            <button style="background-color: #ef4444;" onclick="clearMeasurements()">Clear Data</button>
+        </div>
+    </div>
+
+    <div class="data-section">
+        <div class="table-wrapper">
+            <table>
+                <tr><th>Count</th><td id="statCount">0</td><th>Mean</th><td id="statMean">0.00 &mu;m</td></tr>
+                <tr><th>Median</th><td id="statMedian">0.00 &mu;m</td><th>SD</th><td id="statStd">0.00</td></tr>
+            </table>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0;">Distribution</h3>
+            <button class="btn-export" onclick="exportChart()">Save PNG</button>
+        </div>
+        <div style="height: 180px; position:relative;">
+            <canvas id="distChart"></canvas>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+            <h3 style="margin:0;">Measurement Log</h3>
+            <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+        </div>
+        <div class="table-wrapper" style="flex:1; overflow-y: auto;">
+            <table id="logTable">
+                <thead style="position:sticky; top:0; z-index:2;">
+                    <tr><th>ID</th><th>Pixels</th><th>Micrometers</th></tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 1. IMAGE GENERATION ENGINE ---
+    const imageSources = [];
+
+    function generateSimulatedImages() {
+        const genCanvas = document.createElement('canvas');
+        genCanvas.width = 1200;
+        genCanvas.height = 900;
+        const ctx = genCanvas.getContext('2d');
+
+        for(let i=1; i<=18; i++) {
+            // 1. Background
+            ctx.fillStyle = '#fdf4f9'; 
+            ctx.fillRect(0, 0, genCanvas.width, genCanvas.height);
+
+            // 2. Cells
+            // Create 50-90 RBCs
+            const cellCount = 50 + Math.floor(Math.random() * 40); 
+            for(let c=0; c<cellCount; c++) {
+                const x = Math.random() * genCanvas.width;
+                const y = Math.random() * genCanvas.height;
+                drawOvoidRBC(ctx, x, y);
+            }
+
+            // Add WBCs (Random types based on rarity)
+            const wbcCount = 1 + Math.floor(Math.random() * 3);
+            for(let w=0; w<wbcCount; w++) {
+                const x = Math.random() * genCanvas.width;
+                const y = Math.random() * genCanvas.height;
+                const rand = Math.random();
+                
+                if(rand < 0.55) drawWBC_Neutrophil(ctx, x, y);
+                else if(rand < 0.80) drawWBC_Lymphocyte(ctx, x, y);
+                else if(rand < 0.90) drawWBC_Monocyte(ctx, x, y);
+                else if(rand < 0.97) drawWBC_Eosinophil(ctx, x, y);
+                else drawWBC_Basophil(ctx, x, y);
+            }
+
+            // Platelets
+            for(let p=0; p<25; p++) {
+                const x = Math.random() * genCanvas.width;
+                const y = Math.random() * genCanvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 2 + Math.random()*3, 0, Math.PI*2);
+                ctx.fillStyle = '#a855f7';
+                ctx.fill();
+            }
+
+            // 3. Scale Bar (100px = 10um)
+            const barX = genCanvas.width - 150;
+            const barY = genCanvas.height - 50;
+            ctx.fillStyle = 'black';
+            ctx.fillRect(barX, barY, 100, 6);
+            ctx.font = 'bold 22px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('10 μm', barX + 50, barY - 10);
+
+            imageSources.push({
+                name: `Slide #${i} (Generated)`,
+                url: genCanvas.toDataURL('image/jpeg', 0.85)
+            });
+        }
+    }
+
+    // --- DRAWING FUNCTIONS ---
+    
+    function drawOvoidRBC(ctx, x, y) {
+        // Ovoid logic: Ellipse with random rotation
+        // Standard RBC ~7um (70px).
+        const major = 33 + Math.random() * 5; // Radius, not diameter
+        const minor = major * (0.85 + Math.random() * 0.15); // 0.85 to 1.0 ratio
+        const rotation = Math.random() * Math.PI;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rotation);
+
+        // Outer Cell
+        ctx.beginPath();
+        ctx.ellipse(0, 0, major, minor, 0, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(153, 27, 27, 0.3)';
+        ctx.stroke();
+
+        // Central Pallor (also oval)
+        ctx.beginPath();
+        ctx.ellipse(0, 0, major*0.4, minor*0.4, 0, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(254, 226, 226, 0.5)'; 
+        ctx.fill();
+        
+        ctx.restore();
+    }
+
+    // 1. Neutrophil: Multi-lobed nucleus, pale granules
+    function drawWBC_Neutrophil(ctx, x, y) {
+        const r = 45; 
+        // Cytoplasm
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(233, 213, 255, 0.6)'; // Pale purple
+        ctx.fill();
+        
+        // Nucleus (3-4 lobes)
+        ctx.fillStyle = '#6b21a8'; // Dark Purple
+        const offset = 15;
+        ctx.beginPath(); ctx.arc(x-offset, y, 12, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+offset, y-5, 10, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y+offset, 11, 0, Math.PI*2); ctx.fill();
+        // Connectors
+        ctx.lineWidth = 4; ctx.strokeStyle = '#6b21a8';
+        ctx.beginPath(); ctx.moveTo(x-offset,y); ctx.lineTo(x,y+offset); ctx.stroke();
+    }
+
+    // 2. Eosinophil: Bi-lobed, Red/Orange Granules
+    function drawWBC_Eosinophil(ctx, x, y) {
+        const r = 46;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(254, 205, 211, 0.6)'; 
+        ctx.fill();
+
+        // Granules (Red/Orange)
+        for(let i=0; i<80; i++) {
+            ctx.beginPath();
+            ctx.arc(x + (Math.random()-0.5)*r*1.5, y + (Math.random()-0.5)*r*1.5, 2, 0, Math.PI*2);
+            ctx.fillStyle = '#f43f5e';
+            ctx.fill();
+        }
+        // Nucleus (Bi-lobed)
+        ctx.fillStyle = 'rgba(88, 28, 135, 0.8)';
+        ctx.beginPath(); ctx.arc(x-12, y, 14, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+12, y, 14, 0, Math.PI*2); ctx.fill();
+    }
+
+    // 3. Basophil: Dark Blue/Purple Granules obscuring nucleus
+    function drawWBC_Basophil(ctx, x, y) {
+        const r = 44;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fillStyle = '#ddd6fe'; 
+        ctx.fill();
+
+        // Granules (Dark Blue) - LOTS
+        for(let i=0; i<120; i++) {
+            ctx.beginPath();
+            ctx.arc(x + (Math.random()-0.5)*r*1.8, y + (Math.random()-0.5)*r*1.8, 3, 0, Math.PI*2);
+            ctx.fillStyle = '#1e1b4b'; // Very dark blue
+            ctx.fill();
+        }
+    }
+
+    // 4. Lymphocyte: Small/Medium cell, huge round nucleus
+    function drawWBC_Lymphocyte(ctx, x, y) {
+        const r = 35; // Smaller
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fillStyle = '#e9d5ff'; 
+        ctx.fill();
+
+        // Nucleus (Takes up most of cell)
+        ctx.beginPath(); ctx.arc(x, y, r*0.85, 0, Math.PI*2);
+        ctx.fillStyle = '#581c87'; // Deep purple
+        ctx.fill();
+    }
+
+    // 5. Monocyte: Large, Kidney bean nucleus
+    function drawWBC_Monocyte(ctx, x, y) {
+        const r = 55; // Largest
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+        ctx.fillStyle = '#f3e8ff'; 
+        ctx.fill();
+
+        // Kidney Bean Nucleus
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.random());
+        ctx.beginPath();
+        ctx.ellipse(-5, 0, 20, 30, 0, 0, Math.PI*2); // Main blob
+        ctx.ellipse(15, 0, 15, 20, 0, 0, Math.PI*2); // Side blob
+        ctx.fillStyle = '#6b21a8';
+        ctx.fill();
+        ctx.restore();
+    }
+
+
+    // --- 2. APPLICATION STATE & LOGIC ---
+    let canvas, ctx;
+    let img = new Image();
+    let measurements = []; 
+    let currentMode = 'measure'; 
+    
+    let scale = 1, panX = 0, panY = 0;
+    let isDragging = false, lastX, lastY, activeLine = null;
+    let chartInstance = null;
+
+    window.onload = function() {
+        generateSimulatedImages(); // Run Gen Engine
+
+        canvas = document.getElementById('imgCanvas');
+        ctx = canvas.getContext('2d');
+        
+        const selector = document.getElementById('imageSelect');
+        imageSources.forEach((src, idx) => {
+            let opt = document.createElement('option');
+            opt.value = idx;
+            opt.innerText = src.name;
+            selector.appendChild(opt);
+        });
+        selector.addEventListener('change', (e) => loadImage(e.target.value));
+
+        // Listeners
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('mouseout', handleEnd);
+        canvas.addEventListener('wheel', handleWheel);
+
+        canvas.addEventListener('touchstart', (e) => { handleStart(e.touches[0]); e.preventDefault(); }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => { handleMove(e.touches[0]); e.preventDefault(); }, {passive: false});
+        canvas.addEventListener('touchend', handleEnd);
+
+        window.addEventListener('resize', resizeCanvas);
+        initChart();
+        resizeCanvas();
+        loadImage(0);
+    };
+
+    function resizeCanvas() {
+        const container = document.getElementById('viewerContainer');
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+        if(img.src) draw();
+    }
+
+    function loadImage(index) {
+        measurements = [];
+        updateStats();
+        img.onload = () => { resetView(); };
+        img.src = imageSources[index].url;
+    }
+
+    function resetView() {
+        scale = Math.min(canvas.width / img.width, canvas.height / img.height) * 0.9;
+        panX = (canvas.width - img.width * scale) / 2;
+        panY = (canvas.height - img.height * scale) / 2;
+        draw();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(panX, panY);
+        ctx.scale(scale, scale);
+
+        ctx.drawImage(img, 0, 0);
+
+        // Draw Measurements
+        ctx.lineWidth = 3 / scale; 
+        ctx.strokeStyle = '#f59e0b'; 
+        ctx.fillStyle = '#f59e0b';
+        ctx.font = `bold ${14/scale}px Arial`;
+
+        measurements.forEach((m, i) => {
+            ctx.beginPath();
+            ctx.moveTo(m.x1, m.y1);
+            ctx.lineTo(m.x2, m.y2);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(m.x1, m.y1, 4/scale, 0, Math.PI*2);
+            ctx.arc(m.x2, m.y2, 4/scale, 0, Math.PI*2);
+            ctx.fill();
+
+            // Optional: Draw number next to line
+            ctx.fillStyle = 'white';
+            ctx.fillText(i+1, m.x2 + 10/scale, m.y2);
+            ctx.fillStyle = '#f59e0b';
+        });
+
+        if (activeLine) {
+            ctx.strokeStyle = '#ef4444'; 
+            ctx.beginPath();
+            ctx.moveTo(activeLine.x1, activeLine.y1);
+            ctx.lineTo(activeLine.x2, activeLine.y2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+
+    // --- INTERACTION ---
+    function getImgCoords(screenX, screenY) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: (screenX - rect.left - panX) / scale,
+            y: (screenY - rect.top - panY) / scale
+        };
+    }
+
+    function handleStart(e) {
+        const coords = getImgCoords(e.clientX, e.clientY);
+        isDragging = true;
+        if (currentMode === 'measure') {
+            activeLine = { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y };
+        } else {
+            lastX = e.clientX;
+            lastY = e.clientY;
+        }
+    }
+
+    function handleMove(e) {
+        if (!isDragging) return;
+        if (currentMode === 'measure') {
+            const coords = getImgCoords(e.clientX, e.clientY);
+            activeLine.x2 = coords.x;
+            activeLine.y2 = coords.y;
+            draw();
+        } else {
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            panX += dx; panY += dy;
+            lastX = e.clientX; lastY = e.clientY;
+            draw();
+        }
+    }
+
+    function handleEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        if (currentMode === 'measure' && activeLine) {
+            const dist = Math.hypot(activeLine.x2 - activeLine.x1, activeLine.y2 - activeLine.y1);
+            if (dist > 2) {
+                measurements.push({ ...activeLine, lengthPx: dist });
+                updateStats();
+            }
+            activeLine = null;
+            draw();
+        }
+    }
+
+    function handleWheel(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const newScale = scale * (1 + delta);
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        panX = mouseX - (mouseX - panX) * (newScale / scale);
+        panY = mouseY - (mouseY - panY) * (newScale / scale);
+        scale = newScale;
+        draw();
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        document.getElementById('btnModeMeasure').className = mode === 'measure' ? 'active' : 'secondary';
+        document.getElementById('btnModePan').className = mode === 'pan' ? 'active' : 'secondary';
+        canvas.style.cursor = mode === 'measure' ? 'crosshair' : 'grab';
+    }
+
+    function clearMeasurements() {
+        measurements = [];
+        updateStats();
+        draw();
+    }
+
+    // --- STATS & EXPORT ---
+    
+    function updateStats() {
+        const calibration = parseFloat(document.getElementById('calibrationInput').value) || 0.1;
+        const values = measurements.map(m => m.lengthPx * calibration);
+        const count = values.length;
+        
+        // Basic Stats
+        let sum = 0, min = 0, max = 0, mean = 0, median = 0, sd = 0;
+        if(count > 0) {
+            sum = values.reduce((a, b) => a + b, 0);
+            mean = sum / count;
+            const sorted = [...values].sort((a, b) => a - b);
+            min = sorted[0];
+            max = sorted[count-1];
+            const mid = Math.floor(count / 2);
+            median = count % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / count;
+            sd = Math.sqrt(variance);
+        }
+
+        document.getElementById('statCount').innerText = count;
+        document.getElementById('statMean').innerText = mean.toFixed(2) + " μm";
+        document.getElementById('statMedian').innerText = median.toFixed(2) + " μm";
+        document.getElementById('statStd').innerText = sd.toFixed(2);
+
+        // Update Log Table
+        const tbody = document.getElementById('logBody');
+        tbody.innerHTML = '';
+        values.forEach((v, i) => {
+            tbody.innerHTML += `<tr><td>${i+1}</td><td>${measurements[i].lengthPx.toFixed(1)}</td><td>${v.toFixed(2)}</td></tr>`;
+        });
+        const logContainer = tbody.parentElement.parentElement;
+        logContainer.scrollTop = logContainer.scrollHeight;
+
+        updateChart(values);
+    }
+
+    // --- EXPORT FUNCTIONS ---
+
+    function exportCSV() {
+        const calibration = parseFloat(document.getElementById('calibrationInput').value) || 0.1;
+        let csvContent = "data:text/csv;charset=utf-8,ID,Pixels,Micrometers\n";
+        
+        measurements.forEach((m, index) => {
+            const um = (m.lengthPx * calibration).toFixed(2);
+            csvContent += `${index+1},${m.lengthPx.toFixed(2)},${um}\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "cell_measurements.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function exportChart() {
+        const a = document.createElement('a');
+        a.href = document.getElementById('distChart').toDataURL('image/png');
+        a.download = 'distribution_graph.png';
+        a.click();
+    }
+
+    // --- CHART LOGIC (Frequency Polygon) ---
+
+    function initChart() {
+        const ctxChart = document.getElementById('distChart').getContext('2d');
+        chartInstance = new Chart(ctxChart, {
+            type: 'line', // LINE CHART
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Frequency',
+                    data: [],
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#2563eb',
+                    fill: true, // Area under curve
+                    tension: 0.4 // Smooth curve (Cubic Interpolation)
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { 
+                        title: { display: true, text: 'Diameter (μm)' }, 
+                        grid: { display: false } 
+                    },
+                    y: { 
+                        beginAtZero: true, 
+                        title: { display: true, text: 'Count' },
+                        ticks: { precision: 0 }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateChart(values) {
+        if (!chartInstance) return;
+        
+        // Create Histogram Bins for Line Data
+        const binCount = 15;
+        let min = 0, max = 0;
+
+        if (values.length > 0) {
+             min = Math.floor(Math.min(...values));
+             max = Math.ceil(Math.max(...values));
+        }
+        
+        // Ensure we have a range
+        if (max <= min) max = min + 10;
+        
+        const step = (max - min) / binCount;
+        const bins = new Array(binCount).fill(0);
+        const labels = [];
+
+        for(let i=0; i<binCount; i++) {
+            const center = min + (i * step) + (step/2);
+            labels.push(center.toFixed(1));
+        }
+
+        values.forEach(v => {
+            let idx = Math.floor((v - min) / step);
+            if (idx >= binCount) idx = binCount - 1;
+            if (idx < 0) idx = 0;
+            bins[idx]++;
+        });
+
+        chartInstance.data.labels = labels;
+        chartInstance.data.datasets[0].data = bins;
+        chartInstance.update();
+    }
+</script>
+</body>
+</html>
